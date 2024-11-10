@@ -2,43 +2,13 @@
 //  File.swift
 //  
 //
-//  Created by Gifton Okoronkwo on 11/3/24.
+//  Created by Gifton Okoronkwo on 11/10/24.
 //
 
 import Foundation
-import CoreData
 import SwiftData
 
-/// Main coordinator for thought processing and metadata management
-class ThoughtCoordinator {
-    private let semNet: MetadataNetworkStore
-    private let mapper: NetworkMapper
-    
-    init() throws {
-        // Initialize the storage and network components
-        let storage = try NetworkStorageManager()
-        self.semNet = MetadataNetworkStore(storage: storage)
-        self.mapper = NetworkMapper(store: semNet)
-    }
-    
-    /// Process a new or updated thought
-    func processThought(_ thought: Thought) async throws {
-        // Let the mapper handle all metadata extraction and storage
-        try await mapper.processThought(thought.id, content: thought.content)
-    }
-    
-    /// Retrieve organized metadata for a thought
-    func getThoughtMetadata(_ thoughtId: UUID) async throws -> ThoughtMetadata {
-        try await mapper.getThoughtMetadata(thoughtId)
-    }
-    
-    /// Find related thoughts based on shared metadata
-    func findRelatedThoughts(_ thoughtId: UUID) async throws -> [UUID] {
-        try await mapper.findRelatedThoughts(thoughtId)
-    }
-}
-
-class ThoughtManager {
+actor ThoughtStorage {
     private let coordinator: ThoughtCoordinator
     private let modelContainer: ModelContainer
     private let modelContext: ModelContext
@@ -89,16 +59,16 @@ class ThoughtManager {
 //class ThoughtDetailView: UIViewController {
 //    private let thoughtManager = ThoughtManager()
 //    private var thought: Thought
-//    
+//
 //    func updateMetadataDisplay() async {
 //        let metadata = await thoughtManager.getThoughtMetadata(thought.id)
-//        
+//
 //        // Update UI with organized metadata
 //        keywordsLabel.text = metadata.keywords.map(\.value).joined(separator: ", ")
 //        topicsLabel.text = metadata.topics.map(\.value).joined(separator: ", ")
 //        peopleLabel.text = metadata.people.map(\.value).joined(separator: ", ")
 //        // etc...
-//        
+//
 //        // Get related thoughts
 //        let relatedThoughts = await thoughtManager.getRelatedThoughts(thought.id)
 //        // Update related thoughts UI...

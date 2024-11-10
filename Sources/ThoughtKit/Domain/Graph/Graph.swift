@@ -6,19 +6,18 @@
 //
 
 import Foundation
-
 /// Manages the in-memory cache and persistence of the metadata network
-actor MetadataNetworkStore {
+actor Graph {
     // MARK: - Properties
     
     private var nodeCache: [UUID: MetadataNode]
     private var connectionCache: [UUID: MetadataConnection]
-    private let storage: NetworkStorageManager
+    private let storage: GraphStorage
     private let cacheSize: Int
     
     // MARK: - Initialization
     
-    init(storage: NetworkStorageManager, cacheSize: Int = 10000) {
+    init(storage: GraphStorage, cacheSize: Int = 10000) {
         self.storage = storage
         self.cacheSize = cacheSize
         self.nodeCache = [:]
@@ -101,9 +100,9 @@ actor MetadataNetworkStore {
         metadata: [String: String]? = nil
     ) async throws {
         // Verify nodes exist
-        guard let sourceNode = try await getNode(by: sourceId),
-              let targetNode = try await getNode(by: targetId) else {
-            throw NetworkError.invalidNodes
+        guard let _ = try await getNode(by: sourceId),
+              let _ = try await getNode(by: targetId) else {
+            throw Error.invalidNodes
         }
         
         // Create primary connection
@@ -245,8 +244,8 @@ actor MetadataNetworkStore {
 
 // MARK: - Error Handling
 
-extension MetadataNetworkStore {
-    enum NetworkError: Error {
+extension Graph {
+    enum Error: LocalizedError {
         case invalidNodes
         case connectionFailed
         case cacheError

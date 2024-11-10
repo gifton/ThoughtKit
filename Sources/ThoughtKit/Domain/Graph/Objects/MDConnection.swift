@@ -21,14 +21,14 @@ protocol Connection: Identifiable, Hashable {
     var weight: Float { get }
 }
 
-/// /// Concrete implementation of a Connection that represents relationships between nodes.
+/// Concrete implementation of a Connection that represents relationships between nodes.
 /// This structure maintains information about a single edge in the network,
 /// including its strength and usage patterns over time.
 struct MetadataConnection: Connection, Codable {
     var id: UUID
     var sourceId: UUID
     var targetId: UUID
-    var type: MetadataRelationType  // Changed from ConnectionType
+    var type: MDRelationType  // Changed from ConnectionType
     var weight: Float
     var createdAt: Date
     var lastAccessed: Date

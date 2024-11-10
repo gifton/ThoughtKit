@@ -6,8 +6,6 @@
 //
 
 import Foundation
-import SwiftUI
-import SwiftData
 
 typealias MDResult = MetaDataResult
 struct MetaDataResult {

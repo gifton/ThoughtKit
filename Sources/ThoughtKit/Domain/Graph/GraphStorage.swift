@@ -2,7 +2,7 @@ import Foundation
 
 /// Manages the persistence of the metadata network to and from disk.
 /// Handles atomic saves and maintains data integrity through file coordination.
-actor NetworkStorageManager {
+actor GraphStorage {
     // MARK: - Properties
     private let fileManager: FileManager
     private let batchSize: Int
@@ -53,7 +53,7 @@ actor NetworkStorageManager {
 }
 
 // MARK: - Node Operations
-extension NetworkStorageManager {
+extension GraphStorage {
     
     /// Gets a node batch URL for a given node ID
     private func getBatchURL(for nodeId: UUID) -> URL {
@@ -122,7 +122,7 @@ extension NetworkStorageManager {
 }
 
 // MARK: - Connection Operations
-extension NetworkStorageManager {
+extension GraphStorage {
     
     private func getConnectionBatchURL(for connectionId: UUID) -> URL {
         let batchId = abs(connectionId.hashValue % batchSize)
@@ -158,7 +158,7 @@ extension NetworkStorageManager {
 }
 
 // MARK: - Thought Operations
-extension NetworkStorageManager {
+extension GraphStorage {
     
     func save(thought: Thought) async throws {
         let thoughtURL = thoughtsURL.appendingPathComponent("\(thought.id.uuidString).json")
@@ -193,7 +193,7 @@ extension NetworkStorageManager {
 }
 
 // MARK: - File Operations
-extension NetworkStorageManager {
+extension GraphStorage {
     
     private func loadFile(at url: URL) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
@@ -224,7 +224,7 @@ extension NetworkStorageManager {
 }
 
 // MARK: - Maintenance Operations
-extension NetworkStorageManager {
+extension GraphStorage {
     
     /// Creates a backup of the current network state
     func createBackup() async throws {
@@ -293,7 +293,7 @@ extension NetworkStorageManager {
          ]
  
  */
-extension NetworkStorageManager {
+extension GraphStorage {
     // MARK: - Connection Storage Paths
     
     private var connectionIndexURL: URL {

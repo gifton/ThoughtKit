@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SwiftData
+
 /// Cache actor for storing nodes and their connections
 actor NodeCache {
     private struct CacheEntry {

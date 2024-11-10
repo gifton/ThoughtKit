@@ -21,9 +21,10 @@ private actor VisitedTracker {
 
 
 /// Optimized graph walker with support for different connection types and relationship analysis
-actor OptimizedGraphWalker {
+/// Injection point for finding extended information about existing realized object
+actor GraphWalker {
     
-    private let store: MetadataNetworkStore
+    private let graph: Graph
     private let cache: NodeCache
     private let batchSize: Int
     
@@ -50,8 +51,8 @@ actor OptimizedGraphWalker {
         }
     }
     
-    init(store: MetadataNetworkStore, cacheCapacity: Int = 1000, batchSize: Int = 50) {
-        self.store = store
+    init(graph: Graph, cacheCapacity: Int = 1000, batchSize: Int = 50) {
+        self.graph = graph
         self.cache = NodeCache(capacity: cacheCapacity)
         self.batchSize = batchSize
     }
@@ -64,7 +65,7 @@ actor OptimizedGraphWalker {
     private func resolvePathNodes(_ path: [UUID]) async throws -> [MetadataNode] {
         try await path.asyncMap { id in
             if let cached = await self.cache.get(id) { return cached.node }
-            guard let node = try await self.store.getNode(by: id) else {
+            guard let node = try await self.graph.getNode(by: id) else {
                 throw GraphTraversalError.nodeNotFound(id)
             }
             return node
@@ -78,8 +79,8 @@ actor OptimizedGraphWalker {
         }
         
         // Fetch from store if not cached
-        guard let node = try await store.getNode(by: id) else { return nil }
-        let connections = try await store.findConnections(from: id)
+        guard let node = try await graph.getNode(by: id) else { return nil }
+        let connections = try await graph.findConnections(from: id)
         
         // Cache the result
         await cache.set(id, node: node, connections: connections)
@@ -136,7 +137,7 @@ actor OptimizedGraphWalker {
                 let newPaths = try await batch.asyncConcurrentMap { current -> [(UUID, Int, Float, [MetadataConnection], [UUID])] in
                     let (currentId, depth, weight, previousConnections, path) = current
                     
-                    guard let (node, connections) = try await self.getNodeWithConnections(currentId),
+                    guard let (_, connections) = try await self.getNodeWithConnections(currentId),
                           !(await visitedTracker.isVisited(currentId)),
                           depth <= options.maxDepth else {
                         return []

@@ -8,8 +8,12 @@
 
 import Foundation
 
-final class MetadataRelationshipBuilder {
-    private let store: MetadataNetworkStore
+
+/// owns creation of relationships between nodes of a newly creates thought
+///  also owns adding new relationship
+///  TODO: confirm addition of relationship is sent through builder
+final class GraphBuilder {
+    private let graph: Graph
     
     enum Error: LocalizedError {
         case storeNotAvailable
@@ -125,8 +129,8 @@ final class MetadataRelationshipBuilder {
         }
     ]
     
-    init(store: MetadataNetworkStore) {
-        self.store = store
+    init(graph: Graph) {
+        self.graph = graph
     }
     
     /// Creates relationships based on temporal proximity
@@ -145,7 +149,7 @@ final class MetadataRelationshipBuilder {
                 continue
             }
             
-            try await store.connect(
+            try await graph.connect(
                 sourceId: nodeIds[current.offset],
                 targetId: nodeIds[next.offset],
                 type: .precedes,
@@ -167,7 +171,7 @@ final class MetadataRelationshipBuilder {
                 guard let pos2 = item2.sourcePosition else { continue }
                 
                 if abs(pos1.lowerBound - pos2.lowerBound) < windowSize {
-                    try await store.connect(
+                    try await graph.connect(
                         sourceId: nodeIds[i],
                         targetId: nodeIds[j],
                         type: .coOccurs,
@@ -186,7 +190,7 @@ final class MetadataRelationshipBuilder {
             // Add keywords
             group.addTask {
                 let ids = try await result.keywords.asyncMap { keyword in
-                    try await self.store.addNode(
+                    try await self.graph.addNode(
                         keyword.value,
                         type: .keyword,
                         metadata: ["confidence": Double(keyword.confidenceScore)]
@@ -198,7 +202,7 @@ final class MetadataRelationshipBuilder {
             // Add topics
             group.addTask {
                 let ids = try await result.topics.asyncMap { topic in
-                    try await self.store.addNode(
+                    try await self.graph.addNode(
                         topic.value,
                         type: .topic,
                         metadata: [
@@ -255,7 +259,7 @@ final class MetadataRelationshipBuilder {
         try await nodeIds.values.asyncForEach { [weak self] ids in
             guard let self = self else { throw Error.storeNotAvailable }
             try await ids.asyncForEach { nodeId in
-                try await self.store.connect(
+                try await self.graph.connect(
                     sourceId: thoughtId,
                     targetId: nodeId,
                     type: .has,
@@ -279,7 +283,7 @@ final class MetadataRelationshipBuilder {
                 for (targetId, targetItem) in zip(targetIds, targetItems) {
                     if rule.condition(sourceItem, targetItem) {
                         let weight = rule.weightModifier?(sourceItem, targetItem) ?? rule.baseWeight
-                        try await store.connect(
+                        try await graph.connect(
                             sourceId: sourceId,
                             targetId: targetId,
                             type: rule.relationType,
