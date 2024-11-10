@@ -9,7 +9,7 @@ import Foundation
 
 typealias MDResult = MetaDataResult
 struct MetaDataResult {
-    typealias creator = (NodeType) async throws -> ([MetadataItem])
+    typealias creator = (NodeType) async throws -> ([MetaData])
     var keywords: [Keyword] = []
     var topics: [Topic] = []
     var emotions: [Emotion] = []

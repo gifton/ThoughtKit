@@ -7,9 +7,7 @@
 
 import Foundation
 
-
-typealias MDItem = MetadataItem
-protocol MetadataItem {
+protocol MetaData {
     var value: String { get }
     var confidenceScore: Float { get }  // 0.0 to 1.0
     var sourcePosition: Range<Int>? { get }  // Character position in original text
