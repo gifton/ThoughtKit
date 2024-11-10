@@ -99,8 +99,7 @@ class KeywordAnalyzer {
             let tfIdfScore = calculateTfIdf(
                 term: keyword,
                 frequency: Float(data.frequency),
-                documentLength: Float(text.split(separator: " ").count),
-                text: text
+                documentLength: Float(text.split(separator: " ").count)
             )
             
             return .init(
