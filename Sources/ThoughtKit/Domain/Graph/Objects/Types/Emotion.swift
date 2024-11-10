@@ -9,7 +9,7 @@ import Foundation
 
 extension MDResult{
     // Emotion metadata
-    struct Emotion: MDItem {
+    struct Emotion: MetaData {
         let value: String
         let confidenceScore: Float
         let sourcePosition: Range<Int>?

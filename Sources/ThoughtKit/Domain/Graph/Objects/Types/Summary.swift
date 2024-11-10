@@ -10,7 +10,7 @@ import Foundation
 
 
 extension MDResult {
-    struct Summary: MDItem {
+    struct Summary: MetaData {
         var value: String { summary }
         
         var confidenceScore: Float

@@ -9,7 +9,7 @@ import Foundation
 
 extension MDResult {
     // Activity metadata
-    struct Activity: MDItem {
+    struct Activity: MetaData {
         let value: String
         let confidenceScore: Float
         let sourcePosition: Range<Int>?
@@ -29,7 +29,7 @@ extension MDResult {
 
 extension MDResult {
     // Activity metadata
-    struct Event: MDItem {
+    struct Event: MetaData {
         let value: String
         let confidenceScore: Float
         let sourcePosition: Range<Int>?

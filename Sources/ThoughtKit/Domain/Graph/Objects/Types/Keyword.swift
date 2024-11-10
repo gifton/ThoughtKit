@@ -9,7 +9,7 @@ import Foundation
 
 extension MDResult{
     // Keyword metadata
-    struct Keyword: MDItem {
+    struct Keyword: MetaData {
         let value: String
         let confidenceScore: Float
         let sourcePosition: Range<Int>?

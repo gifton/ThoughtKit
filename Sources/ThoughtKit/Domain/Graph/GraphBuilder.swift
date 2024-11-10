@@ -24,8 +24,8 @@ final class GraphBuilder {
         let targetType: NodeType
         let relationType: MetadataRelationType
         let baseWeight: Float
-        let condition: (MDItem, MDItem) -> Bool
-        let weightModifier: ((MDItem, MDItem) -> Float)?
+        let condition: (MetaData, MetaData) -> Bool
+        let weightModifier: ((MetaData, MetaData) -> Float)?
     }
     
     // Default relationship rules based on metadata types and semantic relationships
@@ -134,7 +134,7 @@ final class GraphBuilder {
     }
     
     /// Creates relationships based on temporal proximity
-    private func createTemporalRelationships(items: [MDItem], type: NodeType, nodeIds: [UUID]) async throws {
+    private func createTemporalRelationships(items: [MetaData], type: NodeType, nodeIds: [UUID]) async throws {
         let sortedItems = items.enumerated()
             .sorted { $0.element.sourcePosition?.lowerBound ?? 0 < $1.element.sourcePosition?.lowerBound ?? 0 }
         
@@ -159,7 +159,7 @@ final class GraphBuilder {
     }
     
     /// Creates relationship networks based on proximity and frequency
-    private func createCoOccurrenceNetwork(items: [MDItem], type: NodeType, nodeIds: [UUID]) async throws {
+    private func createCoOccurrenceNetwork(items: [MetaData], type: NodeType, nodeIds: [UUID]) async throws {
         let windowSize = 100 // characters
         
         for i in 0..<items.count {
@@ -295,7 +295,7 @@ final class GraphBuilder {
         }
     }
     
-    private func getMetadataItems(for type: NodeType, from result: MetaDataResult) -> [MDItem] {
+    private func getMetadataItems(for type: NodeType, from result: MetaDataResult) -> [MetaData] {
         switch type {
         case .keyword: return result.keywords
         case .topic: return result.topics
@@ -312,8 +312,8 @@ final class GraphBuilder {
         targetType: NodeType,
         relationType: MetadataRelationType,
         baseWeight: Float,
-        condition: @escaping (MDItem, MDItem) -> Bool,
-        weightModifier: ((MDItem, MDItem) -> Float)? = nil
+        condition: @escaping (MetaData, MetaData) -> Bool,
+        weightModifier: ((MetaData, MetaData) -> Float)? = nil
     ) {
         let rule = RelationshipRule(
             sourceType: sourceType,

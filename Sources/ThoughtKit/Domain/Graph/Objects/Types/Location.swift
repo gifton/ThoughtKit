@@ -9,7 +9,7 @@ import Foundation
 
 extension MDResult { 
     // Location metadata
-    struct Location: MDItem {
+    struct Location: MetaData {
         let value: String
         let confidenceScore: Float
         let sourcePosition: Range<Int>?
