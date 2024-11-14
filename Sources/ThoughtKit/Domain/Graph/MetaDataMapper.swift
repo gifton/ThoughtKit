@@ -9,15 +9,15 @@ import Foundation
 
 /// Manages the mapping and organization of metadata for thoughts
 /// Provides high-level operations for working with thought metadata
-actor GraphMapper {
+actor MetaDataMapper {
     
     
-    private let graph: Graph
-    private let builder: GraphBuilder
+    private let graph: MetaDataGraph
+    private let builder: MetaDataRelationshipBuilder
     
-    init(graph: Graph) {
+    init(graph: MetaDataGraph) {
         self.graph = graph
-        self.builder = GraphBuilder(graph: graph)
+        self.builder = MetaDataRelationshipBuilder(graph: graph)
     }
     
     /// Creates all metadata nodes for a thought and connects them
@@ -86,7 +86,7 @@ actor GraphMapper {
     }
 }
 
-extension GraphMapper {
+extension MetaDataMapper {
     // MARK: - Metadata Extraction Methods
     
     private func extractKeywords(from content: String) async throws -> [MDResult.Keyword] {

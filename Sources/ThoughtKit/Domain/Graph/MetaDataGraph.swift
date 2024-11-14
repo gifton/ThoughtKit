@@ -7,17 +7,17 @@
 
 import Foundation
 /// Manages the in-memory cache and persistence of the metadata network
-actor Graph {
+actor MetaDataGraph {
     // MARK: - Properties
     
     private var nodeCache: [UUID: MetadataNode]
     private var connectionCache: [UUID: MetadataConnection]
-    private let storage: GraphStorage
+    private let storage: MetaDataStorage
     private let cacheSize: Int
     
     // MARK: - Initialization
     
-    init(storage: GraphStorage, cacheSize: Int = 10000) {
+    init(storage: MetaDataStorage, cacheSize: Int = 10000) {
         self.storage = storage
         self.cacheSize = cacheSize
         self.nodeCache = [:]
@@ -244,7 +244,7 @@ actor Graph {
 
 // MARK: - Error Handling
 
-extension Graph {
+extension MetaDataGraph {
     enum Error: LocalizedError {
         case invalidNodes
         case connectionFailed

@@ -22,9 +22,9 @@ private actor VisitedTracker {
 
 /// Optimized graph walker with support for different connection types and relationship analysis
 /// Injection point for finding extended information about existing realized object
-actor GraphWalker {
+actor MetaDataNetworkWalker {
     
-    private let graph: Graph
+    private let graph: MetaDataGraph
     private let cache: NodeCache
     private let batchSize: Int
     
@@ -51,7 +51,7 @@ actor GraphWalker {
         }
     }
     
-    init(graph: Graph, cacheCapacity: Int = 1000, batchSize: Int = 50) {
+    init(graph: MetaDataGraph, cacheCapacity: Int = 1000, batchSize: Int = 50) {
         self.graph = graph
         self.cache = NodeCache(capacity: cacheCapacity)
         self.batchSize = batchSize

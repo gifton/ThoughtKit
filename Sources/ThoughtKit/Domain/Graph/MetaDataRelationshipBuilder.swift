@@ -12,8 +12,8 @@ import Foundation
 /// owns creation of relationships between nodes of a newly creates thought
 ///  also owns adding new relationship
 ///  TODO: confirm addition of relationship is sent through builder
-final class GraphBuilder {
-    private let graph: Graph
+final class MetaDataRelationshipBuilder {
+    private let graph: MetaDataGraph
     
     enum Error: LocalizedError {
         case storeNotAvailable
@@ -129,7 +129,7 @@ final class GraphBuilder {
         }
     ]
     
-    init(graph: Graph) {
+    init(graph: MetaDataGraph) {
         self.graph = graph
     }
     
