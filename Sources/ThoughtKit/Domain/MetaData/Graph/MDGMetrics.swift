@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension MetaDataGraph {
+extension MetadataGraph {
     
     // MARK: - Metrics and Maintenance
     
@@ -30,6 +30,11 @@ extension MetaDataGraph {
             case operationTimeout
             case nodeRetrievalFailed
             case nodeAdditionFailed
+            case nodeUpdateFailed
+            case nodeDeletionFailed
+            case connectionAditionFailed
+            case connectionUpdateFailed
+            case connectionDeletionFailed
         }
         
         mutating func recordOperation(_ type: OperationType) {
@@ -39,5 +44,14 @@ extension MetaDataGraph {
         mutating func recordError(_ type: ErrorType) {
             errors[type, default: 0] += 1
         }
+    }
+    
+    // MARK: - Cache Maintenance
+    func getCacheStats() async -> (
+        nodes: LRUCache<UUID, MetadataNode>.CacheStats,
+        connections: LRUCache<UUID, MetadataConnection>.CacheStats,
+        queries: LRUCache<String, [UUID]>.CacheStats
+    ) {
+        await cache.getCacheStats()
     }
 }

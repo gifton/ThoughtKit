@@ -10,33 +10,10 @@ import Foundation
 /// concurrent access, sophisticated storage handling, and advanced graph operations.
 /// Manages the in-memory cache and persistence of the metadata network with improved
 /// concurrent access, sophisticated storage handling, and advanced graph operations.
-actor MetaDataGraph {
-    // MARK: - Types
-    
-    enum TransactionState {
-        case none
-        case active(Transaction)
-        case committed
-        case rolledBack
-    }
-    
-    struct Transaction {
-        let id: UUID
-        var operations: [Operation]
-        var timestamp: Date
-        
-        enum Operation {
-            case addNode(MetadataNode)
-            case updateNode(MetadataNode)
-            case deleteNode(UUID)
-            case addConnection(MetadataConnection)
-            case updateConnection(MetadataConnection)
-            case deleteConnection(UUID)
-        }
-    }
-
+actor MetadataGraph {
     // MARK: - Properties
     
+    internal let cache: GraphCache
     private var nodeCache: [UUID: CacheEntry<MetadataNode>]
     private var connectionCache: [UUID: CacheEntry<MetadataConnection>]
     private let storage: MetaDataStorage
@@ -55,6 +32,7 @@ actor MetaDataGraph {
     // MARK: - Initialization
     
     init(storage: MetaDataStorage, cacheSize: Int = 10000) {
+        self.cache = GraphCache(capacity: cacheSize)
         self.storage = storage
         self.cacheSize = cacheSize
         self.nodeCache = [:]
@@ -75,39 +53,6 @@ actor MetaDataGraph {
         }
     }
     
-    // MARK: - Cache Management
-    
-    private struct CacheEntry<T> {
-        let value: T
-        let lastAccessed: Date
-        let accessCount: Int
-        
-        func updated() -> CacheEntry<T> {
-            CacheEntry(value: value, lastAccessed: Date(), accessCount: accessCount + 1)
-        }
-    }
-    
-    private func initializeCache() async {
-        do {
-            let recentNodes = try await storage.loadAllNodes()
-                .values
-                .sorted { $0.lastUsed > $1.lastUsed }
-                .prefix(cacheSize)
-            
-            for node in recentNodes {
-                nodeCache[node.id] = CacheEntry(value: node, lastAccessed: Date(), accessCount: 0)
-            }
-            
-            // Load essential connections
-            let connections = try await storage.loadAllConnections()
-            for connection in connections.values where connection.weight > 0.7 {
-                connectionCache[connection.id] = CacheEntry(value: connection, lastAccessed: Date(), accessCount: 0)
-            }
-        } catch {
-            metrics.recordError(.cacheInitializationFailed)
-        }
-    }
-    
     // MARK: - Transaction Management
     
     func beginTransaction() throws -> UUID {
@@ -125,18 +70,15 @@ actor MetaDataGraph {
         do {
             // Check cache with timeout
             return try await withTimeout(seconds: 2) { [self] in
-                if let cached = self.nodeCache[id] {
-                    let updatedEntry = cached.updated()
-                    self.nodeCache[id] = updatedEntry
-                    return updatedEntry.value
+                if let cached = await cache.getNode(id) {
+                    return cached
                 }
                 
-                // Load from storage
                 guard let node = try await storage.getNode(by: id) else {
                     return nil
                 }
                 
-                updateNodeCache(node)
+                await cache.setNode(node)
                 return node
             }
         } catch let error as GraphError {
@@ -149,11 +91,10 @@ actor MetaDataGraph {
     }
 
     func findNode(withValue value: String, type: NodeType) async -> MetadataNode? {
-        // Check cache first
-        if let cachedNode = nodeCache.values.first(where: {
-            $0.value.type == type && $0.value.value.lowercased() == value.lowercased()
-        }) {
-            return cachedNode.value
+        let cacheKey = "node_\(value)_\(type.rawValue)"
+        if let nodeId = await cache.getCachedQuery(cacheKey)?.first,
+           let node = await cache.getNode(nodeId) {
+            return node
         }
         
         // Load from storage
@@ -163,7 +104,8 @@ actor MetaDataGraph {
         }
         
         if let node = foundNode {
-            updateNodeCache(node)
+            await cache.setNode(node)
+            await cache.cacheQuery(cacheKey, results: [node.id])
         }
         
         return foundNode
@@ -176,11 +118,6 @@ actor MetaDataGraph {
             // Validate input
             guard !value.isEmpty else {
                 throw GraphError.invalidNodeData("Node value cannot be empty")
-            }
-            
-            // Check resource limits
-            if nodeCache.count >= cacheSize {
-                throw GraphError.resourceExhausted("Node cache limit reached (\(cacheSize) nodes)")
             }
             
             // Check for existing node with timeout
@@ -302,9 +239,10 @@ actor MetaDataGraph {
                 throw GraphError.operationTimeout
             }
             
-            let result = try await group.next()!
+            let result = try await group.next()
             group.cancelAll()
-            return result
+            if let result = result { return result }
+            throw GraphError.unknown
         }
     }
     
@@ -335,10 +273,8 @@ actor MetaDataGraph {
             transaction.operations.append(.updateNode(node))
             currentTransaction = .active(transaction)
         } else {
-            try await Task {
-                updateNodeCache(node)
-                try await storage.save(node: node)
-            }.value
+            await cache.setNode(node)
+            try await storage.save(node: node)
         }
     }
 
@@ -347,11 +283,87 @@ actor MetaDataGraph {
         relationshipTypes: Set<MetadataRelationType>? = nil,
         minWeight: Float = 0.0
     ) async throws -> [MetadataConnection] {
+        let cacheKey = "connections_\(sourceId)"
+        if let cached = await cache.getCachedQuery(cacheKey) {
+            return try await retrieveConnections(from: cached)
+        }
+        
         let connections = try await storage.getConnectionsOptimized(for: sourceId)
-        return connections.filter { connection in
-            connection.sourceId == sourceId &&
-            connection.weight >= minWeight &&
-            (relationshipTypes == nil || relationshipTypes!.contains(connection.type))
+        await cache.cacheQuery(cacheKey, results: connections.map { $0.id })
+        
+        for connection in connections {
+            await cache.setConnection(connection)
+        }
+        
+        return connections
+    }
+    
+    private func retrieveConnections(from ids: [UUID]) async throws -> [MetadataConnection] {
+        var connections: [MetadataConnection] = []
+        for id in ids {
+            if let cached = await cache.getConnection(id) {
+                connections.append(cached)
+            } else if let stored = try await storage.loadConnectionBatch(at: getConnectionBatchURL(for: id))
+                .first(where: { $0.id == id }) {
+                await cache.setConnection(stored)
+                connections.append(stored)
+            }
+        }
+        return connections
+    }
+    
+    private func getConnectionBatchURL(for connectionId: UUID) -> URL {
+        // Implementation details...
+        fatalError("Implementation required")
+    }
+    
+    /// Finds metadata nodes of a specific type connected to a given thought
+    /// - Parameters:
+    ///   - thoughtId: The unique identifier of the thought
+    ///   - type: The type of metadata nodes to retrieve
+    /// - Returns: An array of metadata nodes of the specified type
+    func findMetadata(
+        for thoughtId: UUID,
+        ofType type: NodeType
+    ) async throws -> [MetadataNode] {
+        // Find connections from the thought to nodes of the specified type
+        let connections = try await findConnections(
+            from: thoughtId,
+            relationshipTypes: [.has]
+        )
+        
+        // Filter and fetch nodes of the specified type
+        let metadataNodes: [MetadataNode] = try await connections
+            .asyncCompactMap { connection in
+                guard let node = try await getNode(by: connection.targetId),
+                      node.type == type else {
+                    return nil
+                }
+                return node
+            }
+        
+        return metadataNodes
+    }
+    
+    /// Finds thoughts connected to a specific metadata node
+    /// - Parameter metadataId: The unique identifier of the metadata node
+    /// - Returns: An array of thoughts connected to the metadata node
+    func findThoughts(withMetadataId metadataId: UUID) async throws -> [Thought] {
+        // Find connections to the metadata node
+        let connections = try await findConnections(
+            from: metadataId,
+            relationshipTypes: [.has]
+        )
+        
+        // Fetch thoughts from these connections
+        let thoughtIds = connections.map { $0.sourceId }
+        
+        // Retrieve thoughts from storage
+        return try await thoughtIds.asyncMap { thoughtId in
+            guard let thought = try await self.storage.getThought(by: thoughtId) else {
+                throw GraphError.nodeMissing(thoughtId)
+            }
+            return thought
         }
     }
     
@@ -437,54 +449,53 @@ actor MetaDataGraph {
         
         return subgraph
     }
-}
-
-
-private extension MetaDataGraph {
-    func performMaintenance() async throws {
-        // Perform periodic maintenance tasks
-        let now = Date()
-        guard now.timeIntervalSince(lastMaintenanceDate) > 86400 else { return } // Daily maintenance
+    
+    /// Creates a connection between two nodes in the graph
+    /// - Parameters:
+    ///   - sourceId: The identifier of the source node
+    ///   - targetId: The identifier of the target node
+    ///   - type: The type of relationship between nodes
+    ///   - weight: The strength of the connection (0.0 to 1.0)
+    /// - Returns: The unique identifier of the created connection
+    @discardableResult
+    func connect(sourceId: UUID, targetId: UUID, type: MetadataRelationType, weight: Float) async throws -> UUID {
+        // Validate input parameters
+        guard weight >= 0 && weight <= 1 else {
+            throw GraphError.invalidOperation("Connection weight must be between 0 and 1")
+        }
         
-        // Clean up stale cache entries
-        let staleThreshold = now.addingTimeInterval(-3600 * 24) // 24 hours
-        nodeCache = nodeCache.filter { $0.value.lastAccessed > staleThreshold }
-        connectionCache = connectionCache.filter { $0.value.lastAccessed > staleThreshold }
+        guard sourceId != targetId else {
+            throw GraphError.invalidOperation("Cannot create connection to self")
+        }
         
-        // Optimize storage
-        try await storage.cleanupStaleNodes(olderThan: 30) // 30 days
+        // Verify both nodes exist
+        guard try await getNode(by: sourceId) != nil,
+              try await getNode(by: targetId) != nil else {
+            throw GraphError.nodeMissing(sourceId)
+        }
         
-        lastMaintenanceDate = now
+        // Create connection
+        let connection = MetadataConnection(
+            sourceId: sourceId,
+            targetId: targetId,
+            type: type,
+            weight: weight
+        )
+        
+        // Handle within transaction if active
+        if case .active(var transaction) = currentTransaction {
+            transaction.operations.append(.addConnection(connection))
+            currentTransaction = .active(transaction)
+            return connection.id
+        }
+        
+        // Save connection directly if no active transaction
+        try await storage.save(connection: connection)
+        updateConnectionCache(connection)
+        
+        return connection.id
     }
     
-    func executeOperation(_ operation: Transaction.Operation) async throws {
-        switch operation {
-        case .addNode(let node):
-            updateNodeCache(node)
-            try await storage.save(node: node)
-            
-        case .updateNode(let node):
-            updateNodeCache(node)
-            try await storage.save(node: node)
-            
-        case .deleteNode(let nodeId):
-            nodeCache.removeValue(forKey: nodeId)
-            // Implementation for node deletion in storage
-            
-        case .addConnection(let connection):
-            updateConnectionCache(connection)
-            try await storage.save(connection: connection)
-            
-        case .updateConnection(let connection):
-            updateConnectionCache(connection)
-            try await storage.save(connection: connection)
-            
-        case .deleteConnection(let connectionId):
-            connectionCache.removeValue(forKey: connectionId)
-            // Implementation for connection deletion in storage
-        }
-    }
-
     func rollbackTransaction() async {
         guard case .active(let transaction) = currentTransaction else { return }
         
@@ -505,6 +516,58 @@ private extension MetaDataGraph {
         }
         
         currentTransaction = .rolledBack
+    }
+}
+
+
+private extension MetadataGraph {
+    func performMaintenance() async throws {
+        // Perform periodic maintenance tasks
+        let now = Date()
+        guard now.timeIntervalSince(lastMaintenanceDate) > 86400 else { return } // Daily maintenance
+        
+        // Clean up stale cache entries
+        let staleThreshold = now.addingTimeInterval(-3600 * 24) // 24 hours
+        nodeCache = nodeCache.filter { $0.value.lastAccessed > staleThreshold }
+        connectionCache = connectionCache.filter { $0.value.lastAccessed > staleThreshold }
+        
+        // Optimize storage
+        try await storage.cleanupStaleNodes(olderThan: 30) // 30 days
+        
+        lastMaintenanceDate = now
+    }
+    
+    func executeOperation(_ operation: Transaction.Operation) async throws {
+        do {
+            switch operation {
+            case .addNode(let node):
+                updateNodeCache(node)
+                try await storage.save(node: node)
+            case .updateNode(let node):
+                updateNodeCache(node)
+                try await storage.save(node: node)
+                
+            case .deleteNode(let nodeId):
+                nodeCache.removeValue(forKey: nodeId)
+                // Implementation for node deletion in storage
+                
+            case .addConnection(let connection):
+                updateConnectionCache(connection)
+                try await storage.save(connection: connection)
+                
+            case .updateConnection(let connection):
+                updateConnectionCache(connection)
+                try await storage.save(connection: connection)
+                
+            case .deleteConnection(let connectionId):
+                connectionCache.removeValue(forKey: connectionId)
+                // Implementation for connection deletion in storage
+            }
+            
+            metrics.recordOperation(operation.metric)
+        } catch {
+            metrics.recordError(operation.errorMetric)
+        }
     }
     
     func updateNodeCache(_ node: MetadataNode) {
@@ -527,5 +590,39 @@ private extension MetaDataGraph {
             }
         }
         connectionCache[connection.id] = CacheEntry(value: connection, lastAccessed: Date(), accessCount: 0)
+    }
+}
+
+// MARK: Cache Management
+private extension MetadataGraph {
+    struct CacheEntry<T> {
+        let value: T
+        let lastAccessed: Date
+        let accessCount: Int
+        
+        func updated() -> CacheEntry<T> {
+            CacheEntry(value: value, lastAccessed: Date(), accessCount: accessCount + 1)
+        }
+    }
+    
+    func initializeCache() async {
+        do {
+            let recentNodes = try await storage.loadAllNodes()
+                .values
+                .sorted { $0.lastUsed > $1.lastUsed }
+                .prefix(cacheSize)
+            
+            for node in recentNodes {
+                await cache.setNode(node)
+            }
+            
+            // Load essential connections
+            let connections = try await storage.loadAllConnections()
+            for connection in connections.values where connection.weight > 0.7 {
+                await cache.setConnection(connection)
+            }
+        } catch {
+            metrics.recordError(.cacheInitializationFailed)
+        }
     }
 }

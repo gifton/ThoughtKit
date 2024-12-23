@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension MetaDataGraph {
+extension MetadataGraph {
     
     // MARK: - Error Types
     enum GraphError: LocalizedError {
@@ -24,6 +24,7 @@ extension MetaDataGraph {
         case transactionConflict(String)
         case validationError(String)
         case resourceExhausted(String)
+        case unknown
         
         var errorDescription: String? {
             switch self {
@@ -53,6 +54,8 @@ extension MetaDataGraph {
                 return "Validation failed: \(details)"
             case .resourceExhausted(let details):
                 return "Resource limit reached: \(details)"
+            case .unknown:
+                return "An unkown error has occured"
             }
         }
     }

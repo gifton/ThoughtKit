@@ -59,6 +59,20 @@ extension Sequence {
             try await task.value
         }
     }
+    
+    func asyncCompactMap<ElementOfResult>(
+            _ transform: (Element) async throws -> ElementOfResult?
+        ) async throws -> [ElementOfResult] {
+            var results: [ElementOfResult] = []
+            
+            for element in self {
+                if let transformed = try await transform(element) {
+                    results.append(transformed)
+                }
+            }
+            
+            return results
+        }
 }
 
 // Optional: Extension specifically for handling operations with a completion percentage

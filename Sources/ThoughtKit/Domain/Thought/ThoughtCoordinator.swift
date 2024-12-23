@@ -11,14 +11,14 @@ import SwiftData
 
 /// Main coordinator for thought processing and metadata management
 class ThoughtCoordinator {
-    private let graph: MetaDataGraph
-    private let mapper: MetaDataMapper
+    private let graph: MetadataGraph
+    private let mapper: GraphProcessor
     
     init() throws {
         // Initialize the storage and network components
         let storage = try MetaDataStorage()
         self.graph = .init(storage: storage)
-        self.mapper = MetaDataMapper(graph: graph)
+        self.mapper = GraphProcessor(graph: graph)
     }
     
     /// Process a new or updated thought

@@ -129,7 +129,7 @@ extension MetaDataStorage {
         return connectionsURL.appendingPathComponent("batch_\(batchId).json")
     }
     
-    private func loadConnectionBatch(at url: URL) async throws -> [MetadataConnection] {
+    func loadConnectionBatch(at url: URL) async throws -> [MetadataConnection] {
         if fileManager.fileExists(atPath: url.path) {
             let data = try await loadFile(at: url)
             return try JSONDecoder().decode([MetadataConnection].self, from: data)
