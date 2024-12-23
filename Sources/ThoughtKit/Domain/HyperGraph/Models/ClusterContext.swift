@@ -17,7 +17,6 @@ struct ClusterContext {
    var size: Int
    var density: Float
    var cohesion: Float
-   var stability: Float
    
    // Temporal aspects
    var temporalRange: ClosedRange<Date>?
@@ -113,7 +112,7 @@ struct ClusterContext {
    
    struct AnalysisContext {
        var method: AnalysisMethod
-       var parameters: [String: Any]
+       var parameters: TypedMetadata
        var timestamp: Date
        var duration: TimeInterval
        

@@ -6,7 +6,7 @@
 //
 
 import Foundation
-struct NeuralConnection {
+struct NeuralConnection: Hashable {
     let sourceId: UUID
     let targetId: UUID
     var weight: Float

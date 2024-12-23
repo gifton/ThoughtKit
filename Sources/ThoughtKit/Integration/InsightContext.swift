@@ -33,7 +33,7 @@ struct InsightContext {
     var validityPeriod: TimeInterval?
     
     // Additional context
-    var metadata: [String: Any]
+    var metadata: TypedMetadata
     var tags: Set<String>
     
     struct ValidationContext {

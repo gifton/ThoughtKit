@@ -6,7 +6,7 @@
 //
 
 import Foundation
-struct NeuralContext {
+struct NeuralContext: Hashable {
     var activation: Float
     var threshold: Float
     var decay: Float

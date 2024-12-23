@@ -7,16 +7,16 @@
 
 import Foundation
 
-enum PatternSource {
+enum PatternSource: Hashable {
    // Core pattern origins
    case userGenerated(metadata: UserMetadata)
    case systemInferred(confidence: Float)
    case neuralNetwork(activation: Float)
    case graphAnalysis(strength: Float)
    case hypergraphCluster(clusterID: UUID)
-   case hybrid(sources: [PatternSource], weight: Float)
+   indirect case hybrid(sources: [PatternSource], weight: Float)
    
-   struct UserMetadata {
+    struct UserMetadata: Hashable {
        let userID: String
        let timestamp: Date
        var context: String?

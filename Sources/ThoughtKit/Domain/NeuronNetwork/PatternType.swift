@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum PatternType {
+enum PatternType: Hashable {
     case semantic(embedding: [Float])
     case temporal(interval: TimeInterval)
     case categorical(categories: Set<String>)

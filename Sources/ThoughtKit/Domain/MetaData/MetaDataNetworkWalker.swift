@@ -165,12 +165,7 @@ actor MetaDataNetworkWalker {
                                 sourceId: connection.targetId,
                                 targetId: connection.sourceId,
                                 type: inverseType,
-                                weight: connection.weight,
-                                createdAt: connection.createdAt,
-                                lastAccessed: Date(),
-                                occurrences: connection.occurrences,
-                                confidence: connection.confidence,
-                                metadata: connection.metadata
+                                weight: connection.weight
                             )
                             updatedConnections.append(inverseConnection)
                         }

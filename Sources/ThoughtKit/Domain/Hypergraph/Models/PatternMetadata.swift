@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct PatternMetadata {
+struct PatternMetadata: Hashable {
     var createdAt: Date
     var lastUpdated: Date
     var frequency: Int

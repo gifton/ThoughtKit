@@ -14,6 +14,3 @@ protocol MetaData {
     var frequency: Int { get }  // Number of occurrences in the text
     var nodeType: NodeType { get }
 }
-
-
-

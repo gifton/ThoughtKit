@@ -1,13 +1,52 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by Gifton Okoronkwo on 11/13/24.
 //
 
 import Foundation
 
-struct ConnectionMetadata {
+public struct ConnectionMetadata: Hashable, Codable {
+    public init(
+        id: UUID = .init(),
+        createdAt: Date = .init(),
+        updatedAt: Date = .init(),
+        version: Int = 1,
+        weight: Float = 0,
+        confidence: Float = 0,
+        stability: Float = 1,
+        activationCount: Int = 0,
+        lastAccessed: Date? = Date(),
+        accessFrequency: Float = 0,
+        activationHistory: [ConnectionMetadata.ActivationRecord] = [],
+        connectionType: ConnectionMetadata.ConnectionType = .direct,
+        bidirectional: Bool = false,
+        inheritanceRules: Set<ConnectionMetadata.InheritanceRule>? = nil,
+        context: ConnectionMetadata.ConnectionContext = .init(source: .inference, relevance: 1),
+        validationState: ConnectionMetadata.ValidationState = .init(isValid: true),
+        customProperties: TypedMetadata = .init(),
+        tags: Set<String>) {
+            self.id = id
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.version = version
+            self.weight = weight
+            self.confidence = confidence
+            self.stability = stability
+            self.activationCount = activationCount
+            self.lastAccessed = lastAccessed
+            self.accessFrequency = accessFrequency
+            self.activationHistory = activationHistory
+            self.connectionType = connectionType
+            self.bidirectional = bidirectional
+            self.inheritanceRules = inheritanceRules
+            self.context = context
+            self.validationState = validationState
+            self.customProperties = customProperties
+            self.tags = tags
+        }
+    
    // Core metadata
    let id: UUID
    var createdAt: Date
@@ -35,17 +74,27 @@ struct ConnectionMetadata {
    var validationState: ValidationState
    
    // Custom properties
-   var customProperties: [String: Any]
+   var customProperties: TypedMetadata
    var tags: Set<String>
+    
+    
    
-   struct ActivationRecord {
+    public struct ActivationRecord: Hashable, Codable {
        let timestamp: Date
        var strength: Float
        var context: String?
        var duration: TimeInterval?
+       
+       // MARK: - Hashable
+        public func hash(into hasher: inout Hasher) {
+           hasher.combine(timestamp)
+           hasher.combine(strength)
+           hasher.combine(context)
+           hasher.combine(duration)
+       }
    }
    
-   enum ConnectionType: Hashable {
+    public enum ConnectionType: Hashable, Codable {
        case direct         // Explicit connection
        case derived       // Inferred/calculated connection
        case temporary     // Short-term connection
@@ -53,28 +102,53 @@ struct ConnectionMetadata {
        case learned      // Learned through pattern recognition
    }
    
-    enum InheritanceRule: Hashable {
+    public enum InheritanceRule: Hashable, Codable {
        case properties    // Inherit properties
        case relations    // Inherit relationships
        case context     // Inherit context
        case custom(String) // Custom inheritance rule
    }
    
-   struct ConnectionContext: Hashable {
+    public struct ConnectionContext: Hashable, Codable {
+        
+        public init(source: ConnectionSource = .inference, relevance: Float = 1, domain: String? = nil, purpose: String? = nil) {
+            self.source = source
+            self.relevance = relevance
+            self.domain = domain
+            self.purpose = purpose
+        }
+        
        var source: ConnectionSource
        var relevance: Float
        var domain: String?
        var purpose: String?
        
-       enum ConnectionSource: Hashable {
+       public enum ConnectionSource: Hashable, Codable {
            case user
            case system
            case inference
            case external(source: String)
        }
+       
+       // MARK: - Hashable
+        public func hash(into hasher: inout Hasher) {
+           hasher.combine(source)
+           hasher.combine(relevance)
+           hasher.combine(domain)
+           hasher.combine(purpose)
+       }
    }
    
-   struct ValidationState: Hashable {
+    public struct ValidationState: Hashable, Codable {
+        
+        public init(isValid: Bool, lastValidated: Date? = nil, validationMethod: String? = nil, validationScore: Float? = nil, invalidationReason: String? = nil) {
+            self.isValid = isValid
+            self.lastValidated = lastValidated
+            self.validationMethod = validationMethod
+            self.validationScore = validationScore
+            self.invalidationReason = invalidationReason
+        }
+        
        var isValid: Bool
        var lastValidated: Date?
        var validationMethod: String?
@@ -91,53 +165,95 @@ struct ConnectionMetadata {
            isValid = false
            invalidationReason = reason
        }
-   }
-   
-   // MARK: - Lifecycle Methods
-   
-   mutating func updateAccess() {
-       lastAccessed = Date()
-       activationCount += 1
        
-       // Record activation
-       activationHistory.append(ActivationRecord(
-           timestamp: Date(),
-           strength: weight
-       ))
-       
-       // Update frequency
-       updateAccessFrequency()
-   }
-   
-   private mutating func updateAccessFrequency() {
-       // Calculate average frequency based on history
-       guard let firstAccess = activationHistory.first?.timestamp else { return }
-       
-       let totalTime = Date().timeIntervalSince(firstAccess)
-       accessFrequency = Float(activationCount) / Float(totalTime)
-   }
-   
-   // MARK: - Utility Methods
-   
-   func isActive(within timeFrame: TimeInterval) -> Bool {
-       guard let lastAccess = lastAccessed else { return false }
-       return Date().timeIntervalSince(lastAccess) <= timeFrame
-   }
-   
-   func getStrength(at date: Date) -> Float {
-       // Calculate strength based on history
-       guard let record = activationHistory.last(where: { $0.timestamp <= date }) else {
-           return 0.0
+       // MARK: - Hashable
+        public func hash(into hasher: inout Hasher) {
+           hasher.combine(isValid)
+           hasher.combine(lastValidated)
+           hasher.combine(validationMethod)
+           hasher.combine(validationScore)
+           hasher.combine(invalidationReason)
        }
-       return record.strength
    }
-   
-   mutating func decay(rate: Float) {
-       // Apply decay to connection weight
-       let timeSinceLastAccess = lastAccessed.map { Date().timeIntervalSince($0) } ?? 0
-       let decayFactor = 1.0 - (Float(timeSinceLastAccess) * rate)
-       weight *= max(0, decayFactor)
-   }
+}
+
+// MARK: - Hashable Conformance
+extension ConnectionMetadata {
+    
+    // TODO: create decoder initializer
+    public init(from decoder: any Decoder) throws {
+        self.init(id: .init(), createdAt: .init(), updatedAt: .init(), version: 1, weight: 0, confidence: 0, stability: 0, activationCount: 0, accessFrequency: 0, activationHistory: [], connectionType: .direct, bidirectional: false, context: .init(source: .inference, relevance: 0), validationState: .init(isValid: true), customProperties: .init(), tags: [])
+    }
+    public func hash(into hasher: inout Hasher) {
+        // Hash core properties
+        hasher.combine(id)
+        hasher.combine(createdAt)
+        hasher.combine(updatedAt)
+        hasher.combine(version)
+        
+        // Hash connection characteristics
+        hasher.combine(weight)
+        hasher.combine(confidence)
+        hasher.combine(stability)
+        hasher.combine(activationCount)
+        
+        // Hash usage patterns
+        hasher.combine(lastAccessed)
+        hasher.combine(accessFrequency)
+        hasher.combine(activationHistory)
+        
+        // Hash type information
+        hasher.combine(connectionType)
+        hasher.combine(bidirectional)
+        hasher.combine(inheritanceRules)
+        
+        // Hash context and validation
+        hasher.combine(context)
+        hasher.combine(validationState)
+        
+        // Hash tags
+        hasher.combine(tags)
+        
+        // Note: customProperties is not included in hash calculation
+        // because Dictionary<String, Any> is not Hashable
+    }
+    
+    public static func == (lhs: ConnectionMetadata, rhs: ConnectionMetadata) -> Bool {
+        // Compare core properties
+        guard lhs.id == rhs.id,
+              lhs.createdAt == rhs.createdAt,
+              lhs.updatedAt == rhs.updatedAt,
+              lhs.version == rhs.version,
+              
+              // Compare connection characteristics
+              lhs.weight == rhs.weight,
+              lhs.confidence == rhs.confidence,
+              lhs.stability == rhs.stability,
+              lhs.activationCount == rhs.activationCount,
+              
+              // Compare usage patterns
+              lhs.lastAccessed == rhs.lastAccessed,
+              lhs.accessFrequency == rhs.accessFrequency,
+              lhs.activationHistory == rhs.activationHistory,
+              
+              // Compare type information
+              lhs.connectionType == rhs.connectionType,
+              lhs.bidirectional == rhs.bidirectional,
+              lhs.inheritanceRules == rhs.inheritanceRules,
+              
+              // Compare context and validation
+              lhs.context == rhs.context,
+              lhs.validationState == rhs.validationState,
+              
+              // Compare tags
+              lhs.tags == rhs.tags else {
+            return false
+        }
+        
+        // Compare custom properties keys
+        // Note: We only compare keys since values aren't guaranteed to be Equatable
+        return lhs.customProperties == rhs.customProperties
+    }
 }
 
 // MARK: - Extensions
@@ -154,12 +270,6 @@ extension ConnectionMetadata {
    }
 }
 
-extension ConnectionMetadata: Equatable {
-   static func == (lhs: ConnectionMetadata, rhs: ConnectionMetadata) -> Bool {
-       lhs.id == rhs.id && lhs.version == rhs.version
-   }
-}
-
 // MARK: - Factory Methods
 
 extension ConnectionMetadata {
@@ -168,7 +278,7 @@ extension ConnectionMetadata {
        weight: Float,
        source: ConnectionContext.ConnectionSource
    ) -> ConnectionMetadata {
-       ConnectionMetadata.init(
+       ConnectionMetadata(
         id: UUID(),
         createdAt: Date(),
         updatedAt: Date(),
@@ -186,7 +296,7 @@ extension ConnectionMetadata {
             relevance: 1.0
         ),
         validationState: ValidationState(isValid: true),
-        customProperties: [:],
+        customProperties: .init(),
         tags: []
        )
    }

@@ -7,9 +7,9 @@
 
 import Foundation
 
-enum EdgeSource {
+enum EdgeSource: Hashable {
     case explicit(userGenerated: Bool)
     case neural(confidence: Float)
     case derived(method: String)
-    case hybrid(sources: Set<EdgeSource>)
+    indirect case hybrid(sources: Set<EdgeSource>)
 }

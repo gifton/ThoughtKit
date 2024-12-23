@@ -7,7 +7,7 @@
 
 import Foundation
 
-typealias MDRelationType = MetadataRelationType
+public typealias MDRelationType = MetadataRelationType
 /// Defines the types of relationships between metadata nodes
 public enum MetadataRelationType: String, Codable, Hashable {
     // Core relationships

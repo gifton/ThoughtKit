@@ -7,9 +7,9 @@
 
 import Foundation
 
-struct EdgeContext {
+public struct EdgeContext: Hashable, Codable {
     var temporal: TemporalContext?
     var semantic: SemanticContext?
     var confidence: Float
-    var metadata: [String: Any]
+    var metadata: TypedMetadata
 }

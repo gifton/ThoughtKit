@@ -16,7 +16,7 @@ extension MDResult{
         let frequency: Int
         let intensity: Float  // 0.0 to 1.0 intensity of the emotion
         let valence: Float  // -1.0 to 1.0 for negative to positive
-        let arousal: Float  // 0.0 to 1.0 for calm to excited
+        let excitement: Float  // 0.0 to 1.0 for calm to excited
         
         var nodeType: NodeType { .emotion }
     }

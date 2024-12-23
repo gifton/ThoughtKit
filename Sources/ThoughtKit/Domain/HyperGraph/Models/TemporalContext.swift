@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct TemporalContext {
+struct TemporalContext: Hashable, Codable {
     // Core temporal properties
     var timestamp: Date
     var duration: TimeInterval?
@@ -27,7 +27,7 @@ struct TemporalContext {
     var precision: TemporalPrecision
     var confidence: Float
     
-    enum TemporalPrecision {
+    enum TemporalPrecision: Hashable, Codable {
         case exact          // Precise timestamp
         case hourly        // Within the hour
         case daily         // Within the day
@@ -38,13 +38,13 @@ struct TemporalContext {
         case approximate   // General timeframe
     }
     
-    struct RecurrencePattern {
+    struct RecurrencePattern: Hashable, Codable {
         var frequency: Frequency
         var interval: Int
         var endDate: Date?
         var occurrences: Int?
         
-        enum Frequency {
+        enum Frequency: Hashable, Codable {
             case daily
             case weekly
             case monthly
@@ -53,7 +53,7 @@ struct TemporalContext {
         }
     }
     
-    struct SequenceInfo {
+    struct SequenceInfo: Hashable, Codable {
         var order: Int
         var totalInSequence: Int?
         var sequenceID: UUID
