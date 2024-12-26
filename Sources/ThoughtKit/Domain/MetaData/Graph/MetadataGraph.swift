@@ -13,9 +13,7 @@ import Foundation
 actor MetadataGraph {
     // MARK: - Properties
     
-    internal let cache: GraphCache
-    private var nodeCache: [UUID: CacheEntry<MetadataNode>]
-    private var connectionCache: [UUID: CacheEntry<MetadataConnection>]
+    let cache: GraphCache
     private let storage: MetaDataStorage
     private let cacheSize: Int
     private var currentTransaction: TransactionState = .none
@@ -26,8 +24,11 @@ actor MetadataGraph {
     private let writeQueue: DispatchQueue
     
     // Tracking and metrics
-    private var metrics: GraphMetrics
+    private(set) var metrics: GraphMetrics
     private var lastMaintenanceDate: Date
+    
+    var maintenanceSchedule: MaintenanceSchedule = .init(tasks: [], nextRun: Date(), interval: 1.hours)
+    var lastMaintenanceRun: Date { lastMaintenanceDate }
     
     // MARK: - Initialization
     
@@ -35,8 +36,6 @@ actor MetadataGraph {
         self.cache = GraphCache(capacity: cacheSize)
         self.storage = storage
         self.cacheSize = cacheSize
-        self.nodeCache = [:]
-        self.connectionCache = [:]
         
         // Initialize queues
         self.operationQueue = OperationQueue()
@@ -83,9 +82,11 @@ actor MetadataGraph {
             }
         } catch let error as GraphError {
             metrics.recordError(.nodeRetrievalFailed)
+            Logger.shared.error(String(describing: error))
             throw error
         } catch {
             metrics.recordError(.nodeRetrievalFailed)
+            Logger.shared.error(String(describing: error))
             throw GraphError.storageError(error)
         }
     }
@@ -140,7 +141,7 @@ actor MetadataGraph {
                     currentTransaction = .active(transaction)
                 } else {
                     try await Task {
-                        updateNodeCache(updatedNode)
+                        await cache.setNode(updatedNode)
                         try await storage.save(node: updatedNode)
                     }.value
                 }
@@ -161,7 +162,7 @@ actor MetadataGraph {
                 currentTransaction = .active(transaction)
             } else {
                 try await Task {
-                    updateNodeCache(node)
+                    await cache.setNode(node)
                     try await storage.save(node: node)
                 }.value
             }
@@ -276,6 +277,7 @@ actor MetadataGraph {
             await cache.setNode(node)
             try await storage.save(node: node)
         }
+        metrics.recordOperation(.nodeUpdate)
     }
 
     func findConnections(
@@ -491,7 +493,7 @@ actor MetadataGraph {
         
         // Save connection directly if no active transaction
         try await storage.save(connection: connection)
-        updateConnectionCache(connection)
+        await cache.setConnection(connection)
         
         return connection.id
     }
@@ -503,11 +505,11 @@ actor MetadataGraph {
         for operation in transaction.operations.reversed() {
             switch operation {
             case .addNode(let node):
-                nodeCache.removeValue(forKey: node.id)
+                await cache.removeNode(node.id)
             case .updateNode(let node):
                 // Restore previous version if available
                 if let previous = try? await storage.getNode(by: node.id) {
-                    nodeCache[node.id] = CacheEntry(value: previous, lastAccessed: Date(), accessCount: 0)
+                    await cache.setNode(node)
                 }
             // Handle other cases similarly
             default:
@@ -517,50 +519,47 @@ actor MetadataGraph {
         
         currentTransaction = .rolledBack
     }
-}
-
-
-private extension MetadataGraph {
-    func performMaintenance() async throws {
+    
+    internal func performMaintenance() async throws {
         // Perform periodic maintenance tasks
         let now = Date()
         guard now.timeIntervalSince(lastMaintenanceDate) > 86400 else { return } // Daily maintenance
         
         // Clean up stale cache entries
         let staleThreshold = now.addingTimeInterval(-3600 * 24) // 24 hours
-        nodeCache = nodeCache.filter { $0.value.lastAccessed > staleThreshold }
-        connectionCache = connectionCache.filter { $0.value.lastAccessed > staleThreshold }
+//        nodeCache = nodeCache.filter { $0.value.lastAccessed > staleThreshold }
+//        connectionCache = connectionCache.filter { $0.value.lastAccessed > staleThreshold }
         
         // Optimize storage
         try await storage.cleanupStaleNodes(olderThan: 30) // 30 days
         
         lastMaintenanceDate = now
+        
+        /*
+         for task in maintenanceSchedule.tasks where Date() >= task.nextRun {
+             try await executeMaintenanceTask(task.task)
+         }
+         lastMaintenanceDate = Date()
+         */
     }
+}
+
+
+private extension MetadataGraph {
     
     func executeOperation(_ operation: Transaction.Operation) async throws {
         do {
             switch operation {
-            case .addNode(let node):
-                updateNodeCache(node)
+            case .addNode(let node), .updateNode(let node):
+                await cache.setNode(node)
                 try await storage.save(node: node)
-            case .updateNode(let node):
-                updateNodeCache(node)
-                try await storage.save(node: node)
-                
             case .deleteNode(let nodeId):
-                nodeCache.removeValue(forKey: nodeId)
-                // Implementation for node deletion in storage
-                
-            case .addConnection(let connection):
-                updateConnectionCache(connection)
+                await cache.removeNode(nodeId)
+            case .addConnection(let connection), .updateConnection(let connection):
+                await cache.setConnection(connection)
                 try await storage.save(connection: connection)
-                
-            case .updateConnection(let connection):
-                updateConnectionCache(connection)
-                try await storage.save(connection: connection)
-                
             case .deleteConnection(let connectionId):
-                connectionCache.removeValue(forKey: connectionId)
+                await cache.removeConnection(connectionId)
                 // Implementation for connection deletion in storage
             }
             
@@ -569,41 +568,10 @@ private extension MetadataGraph {
             metrics.recordError(operation.errorMetric)
         }
     }
-    
-    func updateNodeCache(_ node: MetadataNode) {
-        // Maintain cache size limit
-        if nodeCache.count >= cacheSize {
-            let oldestNode = nodeCache.min(by: { $0.value.lastAccessed < $1.value.lastAccessed })
-            if let oldest = oldestNode {
-                nodeCache.removeValue(forKey: oldest.key)
-            }
-        }
-        nodeCache[node.id] = CacheEntry(value: node, lastAccessed: Date(), accessCount: 0)
-    }
-    
-    func updateConnectionCache(_ connection: MetadataConnection) {
-        // Maintain cache size limit
-        if connectionCache.count >= cacheSize {
-            let oldestConnection = connectionCache.min(by: { $0.value.lastAccessed < $1.value.lastAccessed })
-            if let oldest = oldestConnection {
-                connectionCache.removeValue(forKey: oldest.key)
-            }
-        }
-        connectionCache[connection.id] = CacheEntry(value: connection, lastAccessed: Date(), accessCount: 0)
-    }
 }
 
 // MARK: Cache Management
 private extension MetadataGraph {
-    struct CacheEntry<T> {
-        let value: T
-        let lastAccessed: Date
-        let accessCount: Int
-        
-        func updated() -> CacheEntry<T> {
-            CacheEntry(value: value, lastAccessed: Date(), accessCount: accessCount + 1)
-        }
-    }
     
     func initializeCache() async {
         do {
@@ -624,5 +592,270 @@ private extension MetadataGraph {
         } catch {
             metrics.recordError(.cacheInitializationFailed)
         }
+    }
+}
+
+
+// MARK: - MetadataGraphProtocol
+extension MetadataGraph: MetadataGraphProtocol {
+    
+    func addNode(_ value: String, type: NodeType, metadata: TypedMetadata?) async throws -> UUID {
+        let node = MetadataNode(type: type, value: value, metadata: metadata ?? TypedMetadata())
+        try await storage.save(node: node)
+        await cache.setNode(node)
+        metrics.recordOperation(.nodeAddition)
+        return node.id
+    }
+    
+    func deleteNode(_ id: UUID) async throws {
+        // Implementation for node deletion
+        metrics.recordOperation(.nodeRemoval)
+    }
+    
+    func updateConnection(_ connection: MetadataConnection) async throws {
+        try await storage.save(connection: connection)
+        await cache.setConnection(connection)
+        metrics.recordOperation(.connectionUpdate)
+    }
+    
+    func deleteConnection(_ id: UUID) async throws {
+        // Implementation for connection deletion
+        metrics.recordOperation(.connectionRemoval)
+    }
+    
+    func beginTransaction() async throws -> UUID {
+        // Transaction implementation
+        return UUID()
+    }
+    
+    func findNodes(matching criteria: QueryCriteria) async throws -> [MetadataNode] {
+        // Node search implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func findPaths(from sourceId: UUID, to targetId: UUID, maxDepth: Int) async throws -> [[MetadataConnection]] {
+        // Path finding implementation
+        metrics.recordOperation(.traversal)
+        return []
+    }
+    
+    func findRelated(to nodeId: UUID, types: Set<NodeType>) async throws -> [RelatedNode] {
+        // Related nodes implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+}
+
+// MARK: - GraphMaintainable
+extension MetadataGraph: GraphMaintainable {
+        
+    func scheduleMaintenanceTask(_ task: MaintenanceTask, priority: TaskPriority) async {
+        // Task scheduling implementation
+    }
+    
+    func cancelMaintenanceTask(_ id: UUID) async {
+        // Task cancellation implementation
+    }
+    
+    func cleanupOrphanedNodes() async throws -> Int {
+        // Cleanup implementation
+        return 0
+    }
+    
+    func pruneStaleConnections(olderThan age: TimeInterval) async throws -> Int {
+        // Connection pruning implementation
+        return 0
+    }
+    
+    func compactStorage() async throws {
+        // Storage compaction implementation
+    }
+    
+    func optimizeIndexes() async throws {
+        // Index optimization implementation
+    }
+    
+    func validateGraphIntegrity() async throws -> ValidationReport {
+        // Validation implementation
+        return ValidationReport(timestamp: Date(), isValid: true, issues: [], metrics: ValidationReport.ValidationMetrics(totalChecks: 0, passedChecks: 0, duration: 0, coverage: 0), recommendations: [])
+    }
+    
+    func repairInconsistencies(_ issues: [ValidationReport.ValidationIssue]) async throws {
+        // Repair implementation
+    }
+    
+    func getMaintenanceHistory(since: Date) async -> [MaintenanceRecord] {
+        // History retrieval implementation
+        return []
+    }
+    
+    func clearMaintenanceHistory() async {
+        // History clearing implementation
+    }
+}
+
+// MARK: - GraphMetricsProvider
+extension MetadataGraph: GraphMetricsProvider {
+
+    func recordOperation(_ type: GraphMetrics.OperationType) {
+        metrics.recordOperation(type)
+    }
+    
+    func recordError(_ type: GraphMetrics.ErrorType) {
+        metrics.recordError(type)
+    }
+    
+    func getOperationCounts() async -> [GraphMetrics.OperationType: Int] {
+        metrics.operationCounts
+    }
+    
+    func getErrorCounts() async -> [GraphMetrics.ErrorType: Int] {
+        metrics.errors
+    }
+    
+    func getQueryLatencies() async -> [String: TimeInterval] {
+        // Query latency implementation
+        return [:]
+    }
+    
+    func getCacheStats() async -> CacheStats {
+        let stats = await cache.getCacheStats()
+        return CacheStats(
+            hitCount: stats.nodes.hits,
+            missCount: stats.nodes.misses,
+            evictionCount: stats.nodes.evictions,
+            memoryUsage: 0
+        )
+    }
+    
+    func getStorageStats() async -> StorageStats {
+        // Storage stats implementation
+        return StorageStats(diskUsage: 0, nodeCount: 0, connectionCount: 0, fragmentationLevel: 0)
+    }
+    
+    func getGraphStats() async -> GraphStats {
+        // Graph stats implementation
+        return GraphStats(timestamp: Date(), nodeCount: 0, connectionCount: 0, nodeTypeCounts: [:], connectionTypeCounts: [:], density: 0, averageDegree: 0, clusteringCoefficient: 0, diameter: 0, averageQueryTime: 0, cacheHitRate: 0, storageUtilization: 0, orphanedNodeCount: 0, inconsistencyCount: 0, validationScore: 0)
+    }
+    
+    func getNodeDistribution() async -> [NodeType: Int] {
+        // Node distribution implementation
+        return [:]
+    }
+    
+    func getConnectionDistribution() async -> [MetadataRelationType: Int] {
+        // Connection distribution implementation
+        return [:]
+    }
+    
+    func getHealthReport() async -> HealthReport {
+        // Health report implementation
+        return HealthReport(status: .healthy, issues: [], metrics: PerformanceMetrics(queryResponseTimes: [:], cacheHitRate: 0, storageUtilization: 0, averageLatency: 0), recommendations: [])
+    }
+    
+    func getPerformanceMetrics() async -> PerformanceMetrics {
+        // Performance metrics implementation
+        return PerformanceMetrics(queryResponseTimes: [:], cacheHitRate: 0, storageUtilization: 0, averageLatency: 0)
+    }
+}
+
+// MARK: - GraphAnalytics
+extension MetadataGraph: GraphAnalytics {
+    func detectPatterns() async throws -> [Pattern] {
+        // Pattern detection implementation
+        return []
+    }
+    
+    func findSimilarPatterns(to pattern: Pattern) async throws -> [Pattern] {
+        // Pattern similarity implementation
+        return []
+    }
+    
+    func validatePattern(_ pattern: Pattern) async throws -> Bool {
+        // Pattern validation implementation
+        return true
+    }
+    
+    func calculateCentrality(for nodeId: UUID, method: CentralityMethod) async throws -> Float {
+        // Centrality calculation implementation
+        return 0
+    }
+    
+    func detectCommunities(algorithm: CommunityDetection) async throws -> [Community] {
+        // Community detection implementation
+        return []
+    }
+    
+    func findInfluentialNodes(limit: Int) async throws -> [MetadataNode] {
+        // Influential node detection implementation
+        return []
+    }
+    
+    func findShortestPath(from: UUID, to: UUID) async throws -> [MetadataConnection]? {
+        // Shortest path implementation
+        return nil
+    }
+    
+    func calculatePathStrength(_ path: [MetadataConnection]) async throws -> Float {
+        // Path strength calculation implementation
+        return 0
+    }
+    
+    func analyzeTemporalPatterns() async throws -> [TemporalPattern] {
+        // Temporal pattern analysis implementation
+        return []
+    }
+    
+    func findTimeBasedClusters() async throws -> [TimeCluster] {
+        // Time-based clustering implementation
+        return []
+    }
+}
+
+// MARK: - GraphQueryable
+extension MetadataGraph: GraphQueryable {
+    func query(_ criteria: QueryCriteria) async throws -> [QueryResult] {
+        // Query implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func executeRawQuery(_ query: String) async throws -> [QueryResult] {
+        // Raw query implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func semanticSearch(_ text: String, threshold: Float) async throws -> [QueryResult] {
+        // Semantic search implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func patternMatch(_ pattern: QueryPattern) async throws -> [PatternMatch] {
+        // Pattern matching implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func spatialQuery(_ bounds: SpatialBounds) async throws -> [QueryResult] {
+        // Spatial query implementation
+        metrics.recordOperation(.query)
+        return []
+    }
+    
+    func explainQuery(_ criteria: QueryCriteria) async throws -> QueryPlan {
+        // Query plan explanation implementation
+        return QueryPlan(steps: [], estimatedCost: 0, cacheUtilization: 0, suggestedIndexes: [])
+    }
+    
+    func optimizeQuery(_ criteria: QueryCriteria) async throws -> QueryCriteria {
+        // Query optimization implementation
+        return criteria
+    }
+    
+    func cacheQuery(_ criteria: QueryCriteria) async throws {
+        // Query caching implementation
     }
 }

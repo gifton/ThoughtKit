@@ -7,6 +7,7 @@
 
 import Foundation
 
+typealias Logger = ThoughtLogger
 /// A logging utility for tracking application events and debugging information.
 /// Each log level is associated with an emoji for better visual identification.
 final class ThoughtLogger {

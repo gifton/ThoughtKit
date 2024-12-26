@@ -1,6 +1,6 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by Gifton Okoronkwo on 12/23/24.
 //
@@ -55,9 +55,24 @@ extension MetadataGraph {
             return cost
         }
         
+        @discardableResult
+        func removeNode(_ id: UUID) async -> MetadataNode? {
+            await nodeCache.remove(id)
+        }
+        
+        @discardableResult
+        func removeConnection(_ id: UUID) async -> MetadataConnection? {
+            await connectionCache.remove(id)
+        }
+        
+        @discardableResult
+        func removeQuery(_ key: String) async -> [UUID]? {
+            await queryCache.remove(key)
+        }
+        
         func getCacheStats() async -> (nodes: LRUCache<UUID, MetadataNode>.CacheStats,
-                               connections: LRUCache<UUID, MetadataConnection>.CacheStats,
-                               queries: LRUCache<String, [UUID]>.CacheStats) {
+                                 connections: LRUCache<UUID, MetadataConnection>.CacheStats,
+                                 queries: LRUCache<String, [UUID]>.CacheStats) {
             return (
                 nodes: await nodeCache.getStats(),
                 connections: await connectionCache.getStats(),

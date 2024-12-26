@@ -6,7 +6,6 @@
 //
 
 import Foundation
-
 actor LRUCache<Key: Hashable, Value> {
     private struct CacheEntry {
         let value: Value
@@ -108,7 +107,21 @@ actor LRUCache<Key: Hashable, Value> {
         }
     }
     
-    func clear() {
+    @discardableResult
+    func remove(_ key: Key) async -> Value? {
+        guard let entry = entries.removeValue(forKey: key) else {
+            return nil
+        }
+        
+        if let index = accessOrder.firstIndex(of: key) {
+            accessOrder.remove(at: index)
+        }
+        
+        currentCost -= entry.cost
+        return entry.value
+    }
+
+    func clear() async {
         entries.removeAll()
         accessOrder.removeAll()
         currentCost = 0
